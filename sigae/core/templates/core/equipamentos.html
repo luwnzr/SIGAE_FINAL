@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}{% if request.GET.modo == 'reserva' and pode_reservar %}Nova Reserva{% else %}Equipamentos{% endif %}{% endblock %}
+{% block content %}
+<style>
+  .turma-select-card {
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem 1.15rem;
+    cursor: pointer;
+    transition: all .18s ease;
+    background: #fff;
+    height: 100%;
+    position: relative;
+  }
+  .turma-select-card:hover {
+    border-color: #8c98d8;
+    background: #f9faff;
+    transform: translateY(-1px);
+  }
+  .turma-select-card.active {
+    border-color: var(--sigae);
+    background: var(--sigae-soft);
+    box-shadow: 0 4px 12px rgba(0, 17, 120, .12);
+  }
+  .turma-select-card .check-icon {
+    opacity: 0;
+    transition: opacity .15s ease;
+  }
+  .turma-select-card.active .check-icon {
+    opacity: 1;
+  }
+</style>
+
+{% if request.GET.modo == 'reserva' and pode_reservar %}
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i> Voltar ao Início
+    </a>
+    <h1 class="h3 fw-bold text-sigae mb-0">Reservar Notebooks</h1>
+    <a href="{% url 'equipamentos' %}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-laptop me-1"></i> Ver todos os equipamentos
+    </a>
+  </div>
+{% else %}
+  <h1 class="h3 fw-bold text-sigae text-center mb-4">Equipamentos</h1>
+{% endif %}
+
+{% if pode_reservar %}
+<section class="reserva-card mb-4">
+  <header class="reserva-head head-atual">
+    <div>
+      <div class="small opacity-75">Solicitação em Lote</div>
+      <div class="fw-bold text-uppercase fs-6">Reservar Notebooks para a Minha Turma</div>
+    </div>
+    <span class="badge bg-light text-sigae fs-6 px-3 py-2" id="badgeDisponiveis">
+      <i class="bi bi-laptop me-1"></i> <span id="qtdDisponiveisTexto">{{ disponiveis_inicial }}</span> disponíveis na data
+    </span>
+  </header>
+
+  <div class="reserva-body">
+    {% if minhas_turmas %}
+    <form method="post"
+          action="{% url 'reservar' %}"
+          id="formReservaTurma"
+          data-hoje="{{ hoje_iso }}"
+          data-disponiveis="{{ disponiveis_inicial|default:0 }}"
+          data-url-disp="{% url 'disponibilidade_json' %}">
+      {% csrf_token %}
+      <input type="hidden" name="turma_id" id="inputTurmaId" value="{{ minhas_turmas.0.pk }}">
+      <input type="hidden" name="turno" id="inputTurno" value="{{ minhas_turmas.0.turno }}">
+
+      <div class="mb-4">
+        <label class="form-label fw-semibold text-sigae small text-uppercase mb-2">
+          1. Selecione a Turma ({{ minhas_turmas|length }} vinculada{{ minhas_turmas|length|pluralize }})
+        </label>
+        <div class="row g-3">
+          {% for t in minhas_turmas %}
+          <div class="col-md-6">
+            <div class="turma-select-card {% if forloop.first %}active{% endif %}"
+                 data-turma-id="{{ t.pk }}"
+                 data-turno="{{ t.turno }}"
+                 data-alunos="{{ t.total_alunos }}"
+                 data-nome="{{ t.nome }}">
+              <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <span class="fw-bold text-sigae fs-6">{{ t.nome }}</span>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-primary">{{ t.get_turno_display }}</span>
+                  <i class="bi bi-check-circle-fill text-sigae fs-5 check-icon"></i>
+                </div>
+              </div>
+              <div class="small text-muted d-flex align-items-center gap-3 pt-1 border-top">
+                <span><i class="bi bi-people-fill text-sigae me-1"></i><strong>{{ t.total_alunos }}</strong> aluno{{ t.total_alunos|pluralize }}</span>
+                <span><i class="bi bi-laptop text-sigae me-1"></i>Limite: <strong>{{ t.total_alunos }}</strong> notebook{{ t.total_alunos|pluralize }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label for="inputDataReserva" class="form-label fw-semibold small text-uppercase text-sigae">2. Data da Aula</label>
+          <div class="input-group">
+            <span class="input-group-text bg-white text-sigae"><i class="bi bi-calendar-event"></i></span>
+            <input type="text" name="data" id="inputDataReserva" class="form-control bg-white" placeholder="Selecione a data" required>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <label for="inputQtdReserva" class="form-label fw-semibold small text-uppercase text-sigae">
+            3. Quantidade <span class="text-muted fw-normal" id="labelMaxAlunos">(máx. {{ minhas_turmas.0.total_alunos }})</span>
+          </label>
+          <input type="number" name="quantidade" id="inputQtdReserva" class="form-control"
+                 min="1" max="{{ minhas_turmas.0.total_alunos }}" value="{{ minhas_turmas.0.total_alunos }}" required>
+        </div>
+
+        <div class="col-md-4">
+          <button type="submit" id="btnConfirmarReserva" class="btn btn-primary w-100 py-2 fw-semibold">
+            <i class="bi bi-check2-circle me-1"></i> Confirmar Reserva
+          </button>
+        </div>
+      </div>
+    </form>
+    {% else %}
+    <div class="alert alert-warning mb-0 d-flex align-items-center gap-2">
+      <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+      <div>Você ainda não possui nenhuma turma vinculada ao seu perfil de instrutor. Solicite ao Administrador o vínculo da sua turma.</div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if request.GET.modo != 'reserva' or not pode_reservar %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <h2 class="h5 fw-bold text-sigae mb-0">Notebooks ({{ notebooks|length }})</h2>
+  <div class="btn-group btn-group-sm" role="group">
+    <a href="{% url 'equipamentos' %}" class="btn {% if not filtro %}btn-primary{% else %}btn-outline-primary{% endif %}">Todos</a>
+    {% for val, label in status_choices %}
+      <a href="?status={{ val }}" class="btn {% if filtro == val %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% for n in notebooks %}
+<article class="reserva-card mb-3">
+  <header class="reserva-head head-atual py-2">
+    <div class="fw-bold text-uppercase"><i class="bi bi-laptop me-2"></i>Patrimônio {{ n.numero }}</div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge {% if n.status == 'DIS' %}bg-success{% elif n.status == 'RES' %}bg-warning text-dark{% elif n.status == 'EMP' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+        {{ n.get_status_display }}
+      </span>
+      {% if user.is_administrador and n.status != 'EMP' %}
+      <form method="post" action="{% url 'alternar_manutencao' n.pk %}" class="d-inline">
+        {% csrf_token %}
+        {% if n.status == 'MAN' %}
+          <button type="submit" class="btn btn-sm btn-light text-success fw-semibold py-0 px-2" title="Liberar equipamento">
+            <i class="bi bi-check-circle me-1"></i>Liberar
+          </button>
+        {% else %}
+          <button type="submit" class="btn btn-sm btn-outline-light py-0 px-2" title="Enviar para manutenção">
+            <i class="bi bi-wrench me-1"></i>Manutenção
+          </button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </div>
+  </header>
+  <div class="reserva-body text-center py-3 text-muted small">
+    {% if n.reserva_atual %}
+      {% if n.reserva_atual.data == hoje %}
+        Reservado hoje para <strong>{{ n.reserva_atual.turma.nome }}</strong> ({{ n.reserva_atual.get_turno_display }})
+      {% else %}
+        Agendado para <strong>{{ n.reserva_atual.turma.nome }}</strong> ({{ n.reserva_atual.get_turno_display }} · {{ n.reserva_atual.data|date:"d/m/Y" }})
+      {% endif %}
+      {% if n.reserva_atual.aluno %} — Solicitado por <strong>{{ n.reserva_atual.aluno.nome_completo }}</strong>{% endif %}
+    {% else %}
+      Equipamento sem atribuição no momento.
+    {% endif %}
+  </div>
+</article>
+{% empty %}
+<div class="reserva-card p-5 text-center text-muted">Nenhum notebook encontrado para este filtro.</div>
+{% endfor %}
+{% endif %}
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const formReserva = document.getElementById("formReservaTurma");
+    const cards = document.querySelectorAll(".turma-select-card");
+    const inputTurmaId = document.getElementById("inputTurmaId");
+    const inputTurno = document.getElementById("inputTurno");
+    const inputQtd = document.getElementById("inputQtdReserva");
+    const labelMax = document.getElementById("labelMaxAlunos");
+    const inputData = document.getElementById("inputDataReserva");
+    const qtdDisponiveisTexto = document.getElementById("qtdDisponiveisTexto");
+    const btnConfirmar = document.getElementById("btnConfirmarReserva");
+
+    const hojeIso = formReserva ? formReserva.dataset.hoje : "";
+    const urlDisp = formReserva ? formReserva.dataset.urlDisp : "";
+    let alunosTurmaAtual = cards.length > 0 ? (parseInt(cards[0].dataset.alunos, 10) || 1) : 1;
+    let disponiveisAtual = formReserva ? (parseInt(formReserva.dataset.disponiveis, 10) || 0) : 0;
+
+    function recalcularLimite() {
+      if (!inputQtd || !labelMax) return;
+      const tetoReal = Math.min(alunosTurmaAtual, disponiveisAtual);
+      if (tetoReal <= 0) {
+        inputQtd.min = 0;
+        inputQtd.max = 0;
+        inputQtd.value = 0;
+        labelMax.textContent = "(indisponível na data)";
+        if (btnConfirmar) btnConfirmar.disabled = true;
+      } else {
+        inputQtd.min = 1;
+        inputQtd.max = tetoReal;
+        inputQtd.value = tetoReal;
+        labelMax.textContent = "(máx. " + tetoReal + ")";
+        if (btnConfirmar) btnConfirmar.disabled = false;
+      }
+    }
+
+    function consultarDisponibilidade(dataIso) {
+      if (!inputTurno || !dataIso || !urlDisp) return;
+      fetch(urlDisp + "?data=" + encodeURIComponent(dataIso) + "&turno=" + encodeURIComponent(inputTurno.value))
+        .then(function (r) { return r.json(); })
+        .then(function (dados) {
+          disponiveisAtual = dados.disponiveis || 0;
+          if (qtdDisponiveisTexto) qtdDisponiveisTexto.textContent = disponiveisAtual;
+          recalcularLimite();
+        });
+    }
+
+    if (inputData) {
+      flatpickr(inputData, {
+        locale: "pt",
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d/m/Y",
+        minDate: hojeIso,
+        defaultDate: hojeIso,
+        disableMobile: true,
+        onChange: function (selectedDates, dateStr) {
+          consultarDisponibilidade(dateStr);
+        }
+      });
+    }
+
+    function atualizarTurmaSelecionada(card) {
+      cards.forEach(function (c) { c.classList.remove("active"); });
+      card.classList.add("active");
+
+      alunosTurmaAtual = parseInt(card.dataset.alunos, 10) || 1;
+      inputTurmaId.value = card.dataset.turmaId;
+      inputTurno.value = card.dataset.turno;
+      consultarDisponibilidade(inputData ? inputData.value : hojeIso);
+    }
+
+    cards.forEach(function (card) {
+      card.addEventListener("click", function () {
+        atualizarTurmaSelecionada(card);
+      });
+    });
+
+    if (cards.length > 0) {
+      atualizarTurmaSelecionada(cards[0]);
+    }
+
+    if (inputQtd) {
+      inputQtd.addEventListener("input", function () {
+        const maxAtual = parseInt(inputQtd.max, 10) || 0;
+        const val = parseInt(inputQtd.value, 10);
+        if (val > maxAtual) {
+          inputQtd.value = maxAtual;
+        }
+      });
+    }
+
+    if (formReserva && btnConfirmar) {
+      formReserva.addEventListener("submit", function () {
+        btnConfirmar.disabled = true;
+        btnConfirmar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Reservando...';
+      });
+    }
+  });
+</script>
+{% endblock %}
